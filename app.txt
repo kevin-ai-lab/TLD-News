@@ -171,4 +171,5 @@ with tab4:
 st.divider()
 if st.button("🔄 Refresh Market Data", use_container_width=True):
     st.cache_data.clear()
+
     st.rerun()
