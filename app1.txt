@@ -1,0 +1,174 @@
+import streamlit as st
+import urllib.parse
+import xml.etree.ElementTree as ET
+import email.utils
+from datetime import datetime
+import html
+import requests
+
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="Michelin B2B Fleet Radar",
+    page_icon="🚛",
+    layout="centered",
+    initial_sidebar_state="collapsed" 
+)
+
+# --- 2. MOBILE CSS STYLING ---
+st.markdown("""
+    <style>
+        .block-container {
+            padding-top: 1.5rem;
+            padding-bottom: 2rem;
+            max-width: 800px;
+        }
+        a { text-decoration: none; color: #1E88E5; font-weight: 600; }
+        a:hover { text-decoration: underline; }
+        .time-stamp { font-size: 0.8rem; color: gray; text-align: center; margin-bottom: 1rem; }
+        /* Make tabs fit nicely on mobile */
+        .stTabs [data-baseweb="tab-list"] { gap: 2px; }
+        .stTabs [data-baseweb="tab"] { padding-right: 8px; padding-left: 8px; white-space: nowrap; }
+        .tab-desc { font-size: 0.85rem; color: #555; margin-bottom: 15px; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 3. BULLETPROOF DATA FETCHING ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_news_cached(query, max_results=15):
+    encoded_query = urllib.parse.quote(query)
+    # Using the US Google News endpoint as it captures the highest volume of NA commercial trucking news
+    google_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
+    bing_url = f"https://www.bing.com/news/search?q={encoded_query}&format=rss"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    }
+    
+    xml_data = None
+    is_google = True
+    
+    try:
+        response = requests.get(google_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        if b'<rss' not in response.content:
+            raise ValueError("Google Block")
+        xml_data = response.content
+    except Exception:
+        try:
+            b_response = requests.get(bing_url, headers=headers, timeout=10)
+            b_response.raise_for_status()
+            xml_data = b_response.content
+            is_google = False
+        except Exception as e:
+            return None, "Failed to load feeds."
+
+    try:
+        root = ET.fromstring(xml_data)
+        articles = []
+        
+        for item in root.findall('./channel/item')[:max_results]:
+            title_el = item.find('title')
+            link_el = item.find('link')
+            pub_date_el = item.find('pubDate')
+            
+            raw_title = title_el.text if title_el is not None and title_el.text else "No Title"
+            link = link_el.text if link_el is not None and link_el.text else "#"
+            pub_date_raw = pub_date_el.text if pub_date_el is not None and pub_date_el.text else ""
+            
+            clean_title = html.unescape(raw_title).replace("[", "(").replace("]", ")")
+            
+            source = "Industry News"
+            if is_google and " - " in clean_title:
+                title_parts = clean_title.rsplit(" - ", 1)
+                clean_title = title_parts[0]
+                source = title_parts[1]
+            elif not is_google:
+                source_el = item.find('source')
+                if source_el is not None and source_el.text:
+                    source = source_el.text
+                elif " - " in clean_title:
+                    title_parts = clean_title.rsplit(" - ", 1)
+                    clean_title = title_parts[0]
+                    source = title_parts[1]
+                    
+            if pub_date_raw:
+                try:
+                    dt = email.utils.parsedate_to_datetime(pub_date_raw)
+                    date_str = dt.strftime("%b %d, %Y")
+                except Exception:
+                    date_str = pub_date_raw[:16] 
+            else:
+                date_str = "Recent"
+                    
+            articles.append({
+                'title': clean_title.strip(),
+                'link': link,
+                'date': date_str,
+                'source': source.strip()
+            })
+            
+        return articles, None
+    except Exception as e:
+        return None, str(e)
+
+def get_news(query):
+    with st.spinner("Scanning industry sources..."):
+        return fetch_news_cached(query)
+
+def display_articles(result_tuple):
+    articles, error_msg = result_tuple
+    if error_msg:
+        st.error("⚠️ Failed to load news feed.")
+        return
+    if not articles:
+        st.info("No major events reported in this category recently.")
+        return
+    for article in articles:
+        with st.container(border=True):
+            st.markdown(f"**[{article['title']}]({article['link']})**")
+            st.caption(f"📅 {article['date']} &nbsp;|&nbsp; 🏢 {article['source']}")
+
+# --- 4. APP UI ---
+st.title("🚛 Michelin B2B Fleet Radar")
+st.markdown("**Market Intelligence:** Tracking US/CAN Class 3-8 commercial fleets & commercial tire dealers.")
+st.markdown(f"<div class='time-stamp'>Last synced: {datetime.now().strftime('%I:%M %p')}</div>", unsafe_allow_html=True)
+
+# Define core industry keywords targeting Class 3-8 fleets and their dealers
+# This explicitly filters out retail passenger cars and focuses heavily on B2B transport
+core_keywords = '("commercial fleet" OR "trucking company" OR "freight carrier" OR "motor carrier" OR "commercial tire" OR "truck tire") AND ("US" OR "Canada" OR "North America")'
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🤝 M&A", 
+    "🚨 Struggles", 
+    "👔 Leaders", 
+    "🗺️ Strategy"
+])
+
+with tab1:
+    st.subheader("Mergers & Acquisitions")
+    st.markdown("<div class='tab-desc'>Consolidations, buyouts, and acquisitions among fleets and commercial tire dealers.</div>", unsafe_allow_html=True)
+    query = f'{core_keywords} AND ("merger" OR "acquisition" OR "acquires" OR "buyout" OR "sold to")'
+    display_articles(get_news(query))
+
+with tab2:
+    st.subheader("Business Struggles")
+    st.markdown("<div class='tab-desc'>Early warnings: loan defaults, bankruptcies, closures, and major layoffs.</div>", unsafe_allow_html=True)
+    query = f'{core_keywords} AND ("bankruptcy" OR "chapter 11" OR "default" OR "closes" OR "shut down" OR "layoffs" OR "liquidation")'
+    display_articles(get_news(query))
+
+with tab3:
+    st.subheader("Leadership Changes")
+    st.markdown("<div class='tab-desc'>Executive swaps, new CEOs, and management shifts impacting vendor relationships.</div>", unsafe_allow_html=True)
+    query = f'{core_keywords} AND ("CEO" OR "executive" OR "president" OR "leadership") AND ("appointed" OR "steps down" OR "resigns" OR "named")'
+    display_articles(get_news(query))
+
+with tab4:
+    st.subheader("Strategy & Footprint")
+    st.markdown("<div class='tab-desc'>Opening or closing locations, expansions, relocating, and strategic shifts.</div>", unsafe_allow_html=True)
+    query = f'{core_keywords} AND ("opens new" OR "expands footprint" OR "new terminal" OR "relocates" OR "strategic shift" OR "closing location" OR "expansion")'
+    display_articles(get_news(query))
+
+st.divider()
+if st.button("🔄 Refresh Market Data", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
