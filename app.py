@@ -8,7 +8,7 @@ import requests
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Michelin B2B Fleet Radar",
+    page_title="Class 7 & 8 Fleet Radar",
     page_icon="🚛",
     layout="centered",
     initial_sidebar_state="collapsed" 
@@ -34,7 +34,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 3. BULLETPROOF DATA FETCHING & FILTERING ---
-# Added 'title_must_include' parameter (must be a tuple so Streamlit can cache it)
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_news_cached(query, title_must_include=None):
     # Appending when:14d tells Google to only return recent news
@@ -74,7 +73,7 @@ def fetch_news_cached(query, title_must_include=None):
         cutoff_date = now_utc - timedelta(days=14)
         
         for item in root.findall('./channel/item'):
-            if len(articles) >= 15:
+            if len(articles) >= 20: 
                 break
                 
             title_el = item.find('title')
@@ -87,7 +86,7 @@ def fetch_news_cached(query, title_must_include=None):
             
             clean_title = html.unescape(raw_title).replace("[", "(").replace("]", ")")
             
-            # --- STRICT HEADLINE FILTER (Eliminates noise for recalls) ---
+            # --- STRICT HEADLINE FILTER ---
             if title_must_include:
                 title_lower = clean_title.lower()
                 # If NONE of the required words are in the title, skip this article entirely
@@ -155,68 +154,59 @@ def display_articles(result_tuple):
             st.caption(f"📅 {article['date']} &nbsp;|&nbsp; 🏢 {article['source']}")
 
 # --- 4. APP UI & OPTIMIZED QUERIES ---
-st.title("🚛 Michelin B2B Fleet Radar")
-st.markdown("**Market Intelligence:** Class 3-8 commercial fleets & commercial tire dealers.")
+st.title("🚛 Class 7 & 8 Fleet Radar")
+st.markdown("**Executive Market Intelligence:** Heavy-duty fleets, OEMs, M&A, and Tire Suppliers.")
 st.markdown(f"<div class='time-stamp'>Last synced: {datetime.now().strftime('%I:%M %p')} <span class='filter-badge'>🗓️ Past 14 Days</span></div>", unsafe_allow_html=True)
 
-# Centralized search blocks 
-BASE_TIRE = '("truck tire" OR "bus tire" OR "truck & bus" OR TBR OR "commercial tire" OR "commercial tyre" OR "on-road tire" OR "on road tire")'
-NEGATIVES = '-"Michelin Guide" -restaurant -"tire pressure monitor" -bicycle -motorcycle -"passenger tire" -"passenger tyre" -passenger'
+# Broad negatives to keep consumer vehicles and unrelated industries out of B2B results
+NEGATIVES = '-passenger -car -cars -pickup -suv -auto -airline -airlines -motorcycle -bicycle -restaurant -"Michelin Guide" -food'
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🆕 Products", 
-    "♻️ Retreads", 
-    "🛠️ Services", 
-    "🏢 Brands",
-    "🚚 Class 6-8",
-    "⚠️ Recalls",
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🚚 Class 7 & 8 Fleets",
+    "🤝 M&A / Bankruptcies", 
+    "🏭 Class 8 OEMs", 
+    "🛞 Tire Suppliers" 
 ])
 
 with tab1:
-    st.subheader("New Products & Tech")
-    st.markdown("<div class='tab-desc'>Tracking line extensions, new sizes, product news, and unveilings.</div>", unsafe_allow_html=True)
-    query = f'{BASE_TIRE} AND (launch OR "new product" OR "product news" OR announcement OR "line extension" OR "new size" OR "new range" OR unveiling) {NEGATIVES}'
+    st.subheader("Class 7 & 8 Fleet News")
+    st.markdown("<div class='tab-desc'>General market news on heavy-duty truck fleets, operations, and freight trends.</div>", unsafe_allow_html=True)
+    
+    # Query: Heavy-duty terms intersected with fleet operational terms
+    query = f'("Class 8" OR "Class 7" OR "heavy-duty" OR "heavy duty" OR "semi-truck" OR "tractor trailer") AND ("fleet" OR "fleets" OR "trucking" OR "carrier" OR "carriers") {NEGATIVES}'
+    
     display_articles(get_news(query))
 
 with tab2:
-    st.subheader("Retreading & Manufacturing")
-    st.markdown("<div class='tab-desc'>Investments, new plants, expansions, and casing management programs.</div>", unsafe_allow_html=True)
-    query = f'(retread OR remold OR remolds OR recap OR recaps OR "pre-mold" OR "pre mold" OR casing OR casings OR "casing program" OR "casing management" OR "retread plant" OR "tread rubber" OR "tread design") AND {BASE_TIRE} AND (launch OR announcement OR expansion OR investment OR partnership OR "new plant" OR capacity OR "new tread") {NEGATIVES}'
-    display_articles(get_news(query))
+    st.subheader("Fleet M&A & Bankruptcies")
+    st.markdown("<div class='tab-desc'>Tracking acquisitions, buyouts, closures, and Chapter 11 filings for trucking companies.</div>", unsafe_allow_html=True)
+    
+    # Query: Carrier/Fleet keywords intersected with financial event keywords
+    query = f'("trucking" OR "fleet" OR "freight" OR "motor carrier" OR "logistics" OR "LTL") AND ("merger" OR "acquisition" OR "buyout" OR "acquires" OR "bankruptcy" OR "bankrupt" OR "chapter 11" OR "shuts down" OR "closure" OR "liquidates" OR "sold") {NEGATIVES}'
+    
+    # We force the headline to contain a business-event word to prevent random articles that just mention the word "bankrupt" in passing
+    mandatory_title_words = ("merger", "merges", "acquire", "acquires", "acquisition", "buyout", "bankrupt", "bankruptcy", "chapter 11", "closes", "closure", "shuts down", "shut down", "liquidation", "liquidates", "insolvent", "sold")
+    display_articles(get_news(query, title_must_include=mandatory_title_words))
 
 with tab3:
-    st.subheader("Dealers & Services")
-    st.markdown("<div class='tab-desc'>Dealerships, mobile networks, roadside service, promotions, and price changes.</div>", unsafe_allow_html=True)
-    query = f'{BASE_TIRE} AND (dealer OR dealership OR distributor OR "service network" OR "fleet service" OR "tire service" OR "service program" OR "service offer" OR "mobile service" OR "roadside service" OR "tire management" OR promotion OR rebate OR "price increase") {NEGATIVES}'
+    st.subheader("Class 8 Truck Manufacturers")
+    st.markdown("<div class='tab-desc'>News regarding heavy-duty truck production, earnings, and OEM updates.</div>", unsafe_allow_html=True)
+    
+    # Query: Explicitly target the major North American heavy-duty truck builders
+    oems = '("Freightliner" OR "Peterbilt" OR "Kenworth" OR "Volvo Trucks" OR "Mack Trucks" OR "Navistar" OR "Paccar" OR "Daimler Truck" OR "International Trucks" OR "Western Star")'
+    query = f'{oems} AND ("Class 8" OR "heavy-duty" OR "heavy duty" OR "semi-truck" OR "tractor trailer" OR "truck" OR "OEM") {NEGATIVES}'
+    
     display_articles(get_news(query))
 
 with tab4:
-    st.subheader("Competitor Pulse")
-    st.markdown("<div class='tab-desc'>Tracking major commercial moves across tier 1 and tier 2 competitors.</div>", unsafe_allow_html=True)
-    competitors = '(Bridgestone OR Continental OR Giti OR Goodyear OR Kumho OR Hankook OR Michelin OR Nokian OR Pirelli OR Toyo OR Yokohama OR "General Tire" OR Firestone OR Uniroyal OR Kelly)'
-    query = f'{competitors} AND ({BASE_TIRE} OR retread OR recap OR recaps OR casing OR casings) {NEGATIVES}'
+    st.subheader("Class 8 Tire Suppliers")
+    st.markdown("<div class='tab-desc'>News from major commercial tire brands specifically related to heavy-duty trucks and Class 8.</div>", unsafe_allow_html=True)
+    
+    # Query: Major tire brands intersected explicitly with heavy-duty/commercial truck terms
+    tire_brands = '("Bridgestone" OR "Continental" OR "Giti" OR "Goodyear" OR "Kumho" OR "Hankook" OR "Michelin" OR "Nokian" OR "Pirelli" OR "Toyo" OR "Yokohama" OR "General Tire" OR "Firestone" OR "Uniroyal" OR "Kelly")'
+    query = f'{tire_brands} AND ("Class 8" OR "Class 7" OR "heavy-duty" OR "heavy duty" OR "commercial truck" OR "semi-truck" OR "tractor trailer") AND ("tire" OR "tires" OR "retread" OR "retreads") {NEGATIVES}'
+    
     display_articles(get_news(query))
-
-with tab5:
-    st.subheader("Class 6-8 & Fleets")
-    st.markdown("<div class='tab-desc'>Tracking heavy duty tractor-trailers, line haul, and fleet service programs.</div>", unsafe_allow_html=True)
-    class_terms = '("Class 6" OR "Class 7" OR "Class 8" OR "heavy-duty" OR "heavy duty" OR "tractor trailer" OR semi OR "line haul" OR "regional haul" OR "long haul" OR "8x4" OR "6x4")'
-    query = f'{class_terms} AND ({BASE_TIRE} OR retread OR recap OR recaps OR casing OR casings) AND (launch OR announcement OR "new product" OR "new line" OR recall OR "service program" OR "fleet service") {NEGATIVES}'
-    display_articles(get_news(query))
-
-with tab6:
-    st.subheader("Recalls & Safety Alerts")
-    st.markdown("<div class='tab-desc'>Strictly filtered for commercial tire defects, tread separations, and NHTSA actions.</div>", unsafe_allow_html=True)
-    
-    # Layer 1 (API Level): Strip out truck engine components, food, and conversational uses
-    vehicle_negatives = '-engine -brakes -steering -airbag -transmission -seatbelt -emissions -food -poultry -meat -politics -"recalls the" -"recalls that" -"recalls how" -"recalls when"'
-    query = f'{BASE_TIRE} AND (recall OR recalls OR recalled OR defect OR NHTSA OR "stop sale") {NEGATIVES} {vehicle_negatives}'
-    
-    # Layer 2 (Python Level): The headline MUST contain one of these safety/recall keywords.
-    # Note: Streamlit caching requires this list to be passed as a Tuple (...) rather than a List [...]
-    mandatory_title_words = ("recall", "recalled", "recalls", "nhtsa", "defect", "stop sale")
-    
-    display_articles(get_news(query, title_must_include=mandatory_title_words))
 
 st.divider()
 if st.button("🔄 Refresh Market Data", use_container_width=True):
