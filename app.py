@@ -25,8 +25,8 @@ st.markdown("""
         a { text-decoration: none; color: #1E88E5; font-weight: 600; }
         a:hover { text-decoration: underline; }
         .time-stamp { font-size: 0.8rem; color: gray; text-align: center; margin-bottom: 1rem; }
-        /* overflow-x added to allow easy horizontal scrolling of 7 tabs on mobile */
-        .stTabs [data-baseweb="tab-list"] { gap: 2px; overflow-x: auto; }
+        .stTabs [data-baseweb="tab-list"] { gap: 2px; overflow-x: auto; scrollbar-width: none; }
+        .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
         .stTabs [data-baseweb="tab"] { padding-right: 8px; padding-left: 8px; white-space: nowrap; }
         .tab-desc { font-size: 0.85rem; color: #555; margin-bottom: 15px; }
         .filter-badge { background-color: #e3f2fd; color: #0d47a1; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
@@ -73,7 +73,6 @@ def fetch_news_cached(query, max_results=30):
         cutoff_date = now_utc - timedelta(days=14)
         
         for item in root.findall('./channel/item'):
-            # We only want to display top 15, but we fetch more initially since we filter some out
             if len(articles) >= 15:
                 break
                 
@@ -89,19 +88,16 @@ def fetch_news_cached(query, max_results=30):
             if pub_date_raw:
                 try:
                     dt = email.utils.parsedate_to_datetime(pub_date_raw)
-                    # Force timezone awareness to compare safely
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     else:
                         dt = dt.astimezone(timezone.utc)
                     
-                    # If the article is older than 14 days, skip it entirely
                     if dt < cutoff_date:
                         continue 
                         
                     date_str = dt.strftime("%b %d, %Y")
                 except Exception:
-                    # If date parsing fails, fallback to raw string
                     date_str = pub_date_raw[:16] 
             else:
                 date_str = "Recent"
@@ -150,75 +146,63 @@ def display_articles(result_tuple):
             st.markdown(f"**[{article['title']}]({article['link']})**")
             st.caption(f"📅 {article['date']} &nbsp;|&nbsp; 🏢 {article['source']}")
 
-# --- 4. APP UI ---
+# --- 4. APP UI & OPTIMIZED QUERIES ---
 st.title("🚛 Michelin B2B Fleet Radar")
 st.markdown("**Market Intelligence:** Class 3-8 commercial fleets & commercial tire dealers.")
 st.markdown(f"<div class='time-stamp'>Last synced: {datetime.now().strftime('%I:%M %p')} <span class='filter-badge'>🗓️ Past 14 Days</span></div>", unsafe_allow_html=True)
 
-# Broadened core keywords for higher catch-rate
-core_keywords = '("trucking" OR "fleet" OR "freight" OR "logistics" OR "commercial tire" OR "truck tire")'
+# Centralized search blocks (Saves character count to prevent Google/Bing rejecting the URL)
+BASE_TIRE = '("truck tire" OR "bus tire" OR "truck & bus" OR TBR OR "commercial tire" OR "commercial tyre" OR "on-road tire" OR "on road tire")'
 
-# Centralized list of competitor brands to keep the code clean
-competitors = '(Bridgestone OR Continental OR Giti OR Goodyear OR Kumho OR Hankook OR Michelin OR Nokian OR Pirelli OR Toyo OR Yokohama OR "General Tire" OR Firestone OR Uniroyal OR "Kelly Tires")'
+# Using minus signs (-) handles "NOT" logic flawlessly in news search engines
+NEGATIVES = '-"Michelin Guide" -restaurant -"tire pressure monitor" -bicycle -motorcycle -"passenger tire" -"passenger tyre" -passenger'
 
-# Modified tabs grouping to feature 7 targeted feeds
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "🤝 M&A", 
-    "🚨 Struggles", 
-    "👔 Leaders", 
-    "🗺️ Strategy",
-    "🆕 Products",
+# Consolidated into 6 highly-focused tabs mapping directly to your provided strings
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "🆕 Products", 
+    "♻️ Retreads", 
+    "🛠️ Services", 
+    "🏢 Brands",
     "🚚 Class 6-8",
-    "⚠️ Recalls"
+    "⚠️ Recalls",
 ])
 
 with tab1:
-    st.subheader("Mergers & Acquisitions")
-    st.markdown("<div class='tab-desc'>Consolidations, buyouts, and acquisitions reported in the last 2 weeks.</div>", unsafe_allow_html=True)
-    # Loosened M&A terms
-    query = f'{core_keywords} AND ("merger" OR "acquisition" OR "acquires" OR "buyout" OR "sold" OR "consolidation")'
+    st.subheader("New Products & Tech")
+    st.markdown("<div class='tab-desc'>Tracking line extensions, new sizes, product news, and unveilings.</div>", unsafe_allow_html=True)
+    query = f'{BASE_TIRE} AND (launch OR "new product" OR "product news" OR announcement OR "line extension" OR "new size" OR "new range" OR unveiling) {NEGATIVES}'
     display_articles(get_news(query))
 
 with tab2:
-    st.subheader("Business Struggles")
-    st.markdown("<div class='tab-desc'>Recent loan defaults, bankruptcies, closures, layoffs, and liquidations.</div>", unsafe_allow_html=True)
-    # Loosened negative business terms
-    query = f'{core_keywords} AND ("bankruptcy" OR "chapter 11" OR "closes" OR "layoff" OR "liquidation" OR "debt" OR "default" OR "struggle")'
+    st.subheader("Retreading & Manufacturing")
+    st.markdown("<div class='tab-desc'>Investments, new plants, expansions, and casing management programs.</div>", unsafe_allow_html=True)
+    query = f'(retread OR remold OR remolds OR recap OR recaps OR "pre-mold" OR "pre mold" OR casing OR casings OR "casing program" OR "casing management" OR "retread plant" OR "tread rubber" OR "tread design") AND {BASE_TIRE} AND (launch OR announcement OR expansion OR investment OR partnership OR "new plant" OR capacity OR "new tread") {NEGATIVES}'
     display_articles(get_news(query))
 
 with tab3:
-    st.subheader("Leadership Changes")
-    st.markdown("<div class='tab-desc'>Recent executive swaps, new CEOs, and management shifts.</div>", unsafe_allow_html=True)
-    # Broadened executive terms
-    query = f'{core_keywords} AND ("CEO" OR "executive" OR "president" OR "leadership" OR "management")'
+    st.subheader("Dealers & Services")
+    st.markdown("<div class='tab-desc'>Dealerships, mobile networks, roadside service, promotions, and price changes.</div>", unsafe_allow_html=True)
+    query = f'{BASE_TIRE} AND (dealer OR dealership OR distributor OR "service network" OR "fleet service" OR "tire service" OR "service program" OR "service offer" OR "mobile service" OR "roadside service" OR "tire management" OR promotion OR rebate OR "price increase") {NEGATIVES}'
     display_articles(get_news(query))
 
 with tab4:
-    st.subheader("Strategy & Footprint")
-    st.markdown("<div class='tab-desc'>Recent location openings, facility expansions, and strategic shifts.</div>", unsafe_allow_html=True)
-    # Broadened real estate and footprint keywords
-    query = f'{core_keywords} AND ("opens" OR "expands" OR "new location" OR "facility" OR "relocates" OR "closes" OR "expansion" OR "terminal")'
+    st.subheader("Competitor Pulse")
+    st.markdown("<div class='tab-desc'>Tracking major commercial moves across tier 1 and tier 2 competitors.</div>", unsafe_allow_html=True)
+    competitors = '(Bridgestone OR Continental OR Giti OR Goodyear OR Kumho OR Hankook OR Michelin OR Nokian OR Pirelli OR Toyo OR Yokohama OR "General Tire" OR Firestone OR Uniroyal OR Kelly)'
+    query = f'{competitors} AND ({BASE_TIRE} OR retread OR recap OR recaps OR casing OR casings) {NEGATIVES}'
     display_articles(get_news(query))
 
 with tab5:
-    st.subheader("Broad Competitor Tracking")
-    st.markdown("<div class='tab-desc'>Tracking new commercial tire products, retreads, and product launches.</div>", unsafe_allow_html=True)
-    # Target string 1: Competitors
-    query = f'{competitors} AND ("commercial tire" OR "truck tire" OR "bus tire" OR TBR OR retread) AND ("new tire" OR launch OR unveils OR announces OR release) -passenger -racing -restaurant'
+    st.subheader("Class 6-8 & Fleets")
+    st.markdown("<div class='tab-desc'>Tracking heavy duty tractor-trailers, line haul, and fleet service programs.</div>", unsafe_allow_html=True)
+    class_terms = '("Class 6" OR "Class 7" OR "Class 8" OR "heavy-duty" OR "heavy duty" OR "tractor trailer" OR semi OR "line haul" OR "regional haul" OR "long haul" OR "8x4" OR "6x4")'
+    query = f'{class_terms} AND ({BASE_TIRE} OR retread OR recap OR recaps OR casing OR casings) AND (launch OR announcement OR "new product" OR "new line" OR recall OR "service program" OR "fleet service") {NEGATIVES}'
     display_articles(get_news(query))
 
 with tab6:
-    st.subheader("Class-Specific Tracking")
-    st.markdown("<div class='tab-desc'>Targeting Class 6-8 heavy duty vehicles and long haul (TLD) commercial fleets.</div>", unsafe_allow_html=True)
-    # Target string 2: Fleet Types
-    query = f'{competitors} AND ("Class 8" OR "Class 7" OR "Class 6" OR "heavy duty" OR "long haul" OR "TLD" OR "commercial fleet") AND (tire OR retread OR dealer OR service OR network) -passenger'
-    display_articles(get_news(query))
-
-with tab7:
-    st.subheader("Recall & Safety Alerts")
-    st.markdown("<div class='tab-desc'>High-priority NHTSA warnings, safety alerts, and product defect recalls.</div>", unsafe_allow_html=True)
-    # Target string 3: Safety alerts
-    query = f'{competitors} AND ("truck tire" OR "commercial tire" OR "bus tire" OR TBR OR retread) AND (recall OR defect OR NHTSA OR "safety warning")'
+    st.subheader("Recalls & Safety Alerts")
+    st.markdown("<div class='tab-desc'>NHTSA safety recalls, stop sales, Transport Canada alerts, and defects.</div>", unsafe_allow_html=True)
+    query = f'{BASE_TIRE} AND (recall OR "safety recall" OR defect OR "field action" OR "stop sale" OR "consumer alert" OR NHTSA OR "Transport Canada") {NEGATIVES}'
     display_articles(get_news(query))
 
 st.divider()
