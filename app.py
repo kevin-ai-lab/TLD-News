@@ -25,7 +25,8 @@ st.markdown("""
         a { text-decoration: none; color: #1E88E5; font-weight: 600; }
         a:hover { text-decoration: underline; }
         .time-stamp { font-size: 0.8rem; color: gray; text-align: center; margin-bottom: 1rem; }
-        .stTabs [data-baseweb="tab-list"] { gap: 2px; }
+        /* overflow-x added to allow easy horizontal scrolling of 7 tabs on mobile */
+        .stTabs [data-baseweb="tab-list"] { gap: 2px; overflow-x: auto; }
         .stTabs [data-baseweb="tab"] { padding-right: 8px; padding-left: 8px; white-space: nowrap; }
         .tab-desc { font-size: 0.85rem; color: #555; margin-bottom: 15px; }
         .filter-badge { background-color: #e3f2fd; color: #0d47a1; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
@@ -157,11 +158,18 @@ st.markdown(f"<div class='time-stamp'>Last synced: {datetime.now().strftime('%I:
 # Broadened core keywords for higher catch-rate
 core_keywords = '("trucking" OR "fleet" OR "freight" OR "logistics" OR "commercial tire" OR "truck tire")'
 
-tab1, tab2, tab3, tab4 = st.tabs([
+# Centralized list of competitor brands to keep the code clean
+competitors = '(Bridgestone OR Continental OR Giti OR Goodyear OR Kumho OR Hankook OR Michelin OR Nokian OR Pirelli OR Toyo OR Yokohama OR "General Tire" OR Firestone OR Uniroyal OR "Kelly Tires")'
+
+# Modified tabs grouping to feature 7 targeted feeds
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🤝 M&A", 
     "🚨 Struggles", 
     "👔 Leaders", 
-    "🗺️ Strategy"
+    "🗺️ Strategy",
+    "🆕 Products",
+    "🚚 Class 6-8",
+    "⚠️ Recalls"
 ])
 
 with tab1:
@@ -190,6 +198,27 @@ with tab4:
     st.markdown("<div class='tab-desc'>Recent location openings, facility expansions, and strategic shifts.</div>", unsafe_allow_html=True)
     # Broadened real estate and footprint keywords
     query = f'{core_keywords} AND ("opens" OR "expands" OR "new location" OR "facility" OR "relocates" OR "closes" OR "expansion" OR "terminal")'
+    display_articles(get_news(query))
+
+with tab5:
+    st.subheader("Broad Competitor Tracking")
+    st.markdown("<div class='tab-desc'>Tracking new commercial tire products, retreads, and product launches.</div>", unsafe_allow_html=True)
+    # Target string 1: Competitors
+    query = f'{competitors} AND ("commercial tire" OR "truck tire" OR "bus tire" OR TBR OR retread) AND ("new tire" OR launch OR unveils OR announces OR release) -passenger -racing -restaurant'
+    display_articles(get_news(query))
+
+with tab6:
+    st.subheader("Class-Specific Tracking")
+    st.markdown("<div class='tab-desc'>Targeting Class 6-8 heavy duty vehicles and long haul (TLD) commercial fleets.</div>", unsafe_allow_html=True)
+    # Target string 2: Fleet Types
+    query = f'{competitors} AND ("Class 8" OR "Class 7" OR "Class 6" OR "heavy duty" OR "long haul" OR "TLD" OR "commercial fleet") AND (tire OR retread OR dealer OR service OR network) -passenger'
+    display_articles(get_news(query))
+
+with tab7:
+    st.subheader("Recall & Safety Alerts")
+    st.markdown("<div class='tab-desc'>High-priority NHTSA warnings, safety alerts, and product defect recalls.</div>", unsafe_allow_html=True)
+    # Target string 3: Safety alerts
+    query = f'{competitors} AND ("truck tire" OR "commercial tire" OR "bus tire" OR TBR OR retread) AND (recall OR defect OR NHTSA OR "safety warning")'
     display_articles(get_news(query))
 
 st.divider()
