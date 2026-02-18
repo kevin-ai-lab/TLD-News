@@ -34,8 +34,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 3. BULLETPROOF DATA FETCHING & FILTERING ---
+# Added 'title_must_include' parameter (must be a tuple so Streamlit can cache it)
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_news_cached(query, max_results=30):
+def fetch_news_cached(query, title_must_include=None):
     # Appending when:14d tells Google to only return recent news
     google_query = f"{query} when:14d"
     
@@ -84,6 +85,15 @@ def fetch_news_cached(query, max_results=30):
             link = link_el.text if link_el is not None and link_el.text else "#"
             pub_date_raw = pub_date_el.text if pub_date_el is not None and pub_date_el.text else ""
             
+            clean_title = html.unescape(raw_title).replace("[", "(").replace("]", ")")
+            
+            # --- STRICT HEADLINE FILTER (Eliminates noise for recalls) ---
+            if title_must_include:
+                title_lower = clean_title.lower()
+                # If NONE of the required words are in the title, skip this article entirely
+                if not any(word in title_lower for word in title_must_include):
+                    continue
+            
             # --- 14-DAY STRICT PYTHON FILTER ---
             if pub_date_raw:
                 try:
@@ -101,8 +111,6 @@ def fetch_news_cached(query, max_results=30):
                     date_str = pub_date_raw[:16] 
             else:
                 date_str = "Recent"
-            
-            clean_title = html.unescape(raw_title).replace("[", "(").replace("]", ")")
             
             source = "Industry News"
             if is_google and " - " in clean_title:
@@ -129,9 +137,9 @@ def fetch_news_cached(query, max_results=30):
     except Exception as e:
         return None, str(e)
 
-def get_news(query):
+def get_news(query, title_must_include=None):
     with st.spinner("Scanning industry sources (Past 14 Days)..."):
-        return fetch_news_cached(query)
+        return fetch_news_cached(query, title_must_include=title_must_include)
 
 def display_articles(result_tuple):
     articles, error_msg = result_tuple
@@ -151,13 +159,10 @@ st.title("🚛 Michelin B2B Fleet Radar")
 st.markdown("**Market Intelligence:** Class 3-8 commercial fleets & commercial tire dealers.")
 st.markdown(f"<div class='time-stamp'>Last synced: {datetime.now().strftime('%I:%M %p')} <span class='filter-badge'>🗓️ Past 14 Days</span></div>", unsafe_allow_html=True)
 
-# Centralized search blocks (Saves character count to prevent Google/Bing rejecting the URL)
+# Centralized search blocks 
 BASE_TIRE = '("truck tire" OR "bus tire" OR "truck & bus" OR TBR OR "commercial tire" OR "commercial tyre" OR "on-road tire" OR "on road tire")'
-
-# Using minus signs (-) handles "NOT" logic flawlessly in news search engines
 NEGATIVES = '-"Michelin Guide" -restaurant -"tire pressure monitor" -bicycle -motorcycle -"passenger tire" -"passenger tyre" -passenger'
 
-# Consolidated into 6 highly-focused tabs mapping directly to your provided strings
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🆕 Products", 
     "♻️ Retreads", 
@@ -201,9 +206,17 @@ with tab5:
 
 with tab6:
     st.subheader("Recalls & Safety Alerts")
-    st.markdown("<div class='tab-desc'>NHTSA safety recalls, stop sales, Transport Canada alerts, and defects.</div>", unsafe_allow_html=True)
-    query = f'{BASE_TIRE} AND (recall OR "safety recall" OR defect OR "field action" OR "stop sale" OR "consumer alert" OR NHTSA OR "Transport Canada") {NEGATIVES}'
-    display_articles(get_news(query))
+    st.markdown("<div class='tab-desc'>Strictly filtered for commercial tire defects, tread separations, and NHTSA actions.</div>", unsafe_allow_html=True)
+    
+    # Layer 1 (API Level): Strip out truck engine components, food, and conversational uses
+    vehicle_negatives = '-engine -brakes -steering -airbag -transmission -seatbelt -emissions -food -poultry -meat -politics -"recalls the" -"recalls that" -"recalls how" -"recalls when"'
+    query = f'{BASE_TIRE} AND (recall OR recalls OR recalled OR defect OR NHTSA OR "stop sale") {NEGATIVES} {vehicle_negatives}'
+    
+    # Layer 2 (Python Level): The headline MUST contain one of these safety/recall keywords.
+    # Note: Streamlit caching requires this list to be passed as a Tuple (...) rather than a List [...]
+    mandatory_title_words = ("recall", "recalled", "recalls", "nhtsa", "defect", "stop sale")
+    
+    display_articles(get_news(query, title_must_include=mandatory_title_words))
 
 st.divider()
 if st.button("🔄 Refresh Market Data", use_container_width=True):
